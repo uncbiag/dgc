@@ -10,3 +10,8 @@ Let x,y,z and c denote the input data, the side-information, the latent code, an
 p(x,y,z,c) = p(y|z,c)p(x|z)p(z|c)p(c)
 
 In words, we first sample a component index from p(c), sample the latent code z from p(z|c), and then we reconstruct the input x and predict for the side-information y. 
+
+## Infernece for DGC
+For the variational lower bound of DGC, please refer to Eq. 2 in the main paper. In a nutshell, we want to maximize the log-likelihood by maximizing its variational lower bound. 
+
+
