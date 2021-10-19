@@ -17,3 +17,14 @@ In words, we first sample a component index from p(c), sample the latent code z 
 For the variational lower bound of DGC, please refer to Eq. 2 in the main paper. In a nutshell, we want to maximize the log-likelihood by maximizing its variational lower bound. 
 
 
+## Running the model
+To run the model, simply do
+```python
+from typing import Iterator
+
+def fib(n: int) -> Iterator[int]:
+    a, b = 0, 1
+    while a < n:
+        yield a
+        a, b = b, a + b
+```
