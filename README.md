@@ -1,3 +1,3 @@
 # Deep Goal-Oriented Clustering
 
-This depository 
+This is the depository for our paper, Deep Goal-Oriented Clustering. 
