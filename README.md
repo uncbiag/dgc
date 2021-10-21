@@ -13,7 +13,7 @@ In words, we first sample a component index from p(c), sample the latent code z 
 
 ![](https://github.com/uncbiag/dgc/blob/main/bayesian_net.png?raw=true|width=20)
 
-## Infernece for DGC
+## Inference for DGC
 For the variational lower bound of DGC, please refer to Eq. 2 in the main paper. In a nutshell, we want to maximize the log-likelihood by maximizing its variational lower bound. 
 
 
