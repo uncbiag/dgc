@@ -12,86 +12,21 @@ import matplotlib.pyplot as plt
 import time
 from sklearn import datasets
 import matplotlib.pyplot as plt
-from vae import vae
+from vae_clustering import VaDE
+from dgc_w_o_balancing import dgc_w_o_balancing
+from dgc_w_balancing import dgc_w_balancing
+from dgc_w_balancing_new import dgc_w_balancing_new
+import argparse
+from util_class import split_train_test
+from data_loader import pacman_loader
+from pretrain_vae import pretrain
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.decomposition import PCA
+from new_dgc_w_o_balancing import new_dgc_w_o_balancing
 from dgc_entropy import dgc_entropy
-from vade import vade
-
-def vae_draw_sample(model,k,plot=False):
-  import matplotlib.pyplot as plt
-  mu = np.zeros(model.z_dim)
-  cov = np.eye(model.z_dim)
-  sample = torch.tensor(np.random.multivariate_normal(mu,cov,k)).float()
-  h = model._dec(sample)
-  h = h.view(-1, 128,4,4)
-  recon = model.decoder(h)
-  recon = torch.sigmoid(recon.view(-1, model.nChannels, model.height, model.width))
-  recon = recon.detach().numpy()
-  recon =  np.transpose(recon,(0,2,3,1))
-  if plot==True:
-    plt.imshow(recon[1])
-    plt.show()
-  return recon
+from sklearn.manifold import TSNE
 
 
-train_transform = transforms.Compose(
-    [transforms.RandomHorizontalFlip(),
-     transforms.ToTensor(),])
-test_transform = transforms.Compose(
-    [transforms.ToTensor(),])
-
-trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
-                                        download=True, transform=train_transform)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=32,
-                                          shuffle=True, num_workers=2)
-
-testset = torchvision.datasets.CIFAR10(root='./data', train=False,
-                                       download=True, transform=test_transform)
-testloader = torch.utils.data.DataLoader(testset, batch_size=32,
-                                         shuffle=False, num_workers=2)
-for i,(j,k) in enumerate(testloader):
-  if i==0:
-    inputs=j
-    break
-
-
-def recon_sample(inputs,model,k,plot=False):
-  import matplotlib.pyplot as plt
-  h = model.encoder(inputs)
-  h = h.view(h.size(0), h.size(1)*h.size(2)*h.size(3))
-  mu = model._enc_mu(h)
-  logvar = model._enc_log_sigma(h)
-  sample = util.reparameterize(mu, logvar,False)
-  h = model._dec(sample)
-  h = h.view(-1, 128,4,4)
-  recon = model.decoder(h)
-  recon = torch.sigmoid(recon.view(-1, model.nChannels, model.height, model.width))
-  recon = recon.detach().numpy()
-  recon =  np.transpose(recon,(0,2,3,1))
-  if plot==True:
-    plt.imshow(recon[k])
-    plt.show()
-  return recon
-
-
-def mix_gaus_draw_sample(model,cen_ind, k,plot=False):
-  import matplotlib.pyplot as plt
-  mean = model.u_p.detach().numpy()
-  var = model.lambda_p.detach().numpy()
-  sample = torch.tensor(np.random.multivariate_normal(mean[:,cen_ind],np.diag(var[:,cen_ind]),k)).float()
-  h = model._dec(sample)
-  h = h.view(-1, 256,4,4)
-  recon = model.decoder(h)
-  recon = torch.sigmoid(recon.view(-1, model.nChannels, model.height, model.width))
-  recon = recon.detach().numpy()
-  recon =  np.transpose(recon,(0,2,3,1))
-  if plot==True:
-    plt.imshow(recon[1])
-    plt.show()
-  return recon
-
-
-
-'''
 def get_pcz(z,u_p,lambda_p,theta_p):
     Z = z.unsqueeze(2).expand(z.size()[0], z.size()[1], 2) # NxDxK
     u_tensor3 = u_p.unsqueeze(0).expand(z.size()[0], u_p.size()[0], u_p.size()[1]) # NxDxK
@@ -149,104 +84,142 @@ def reparameterize(mu, logvar):
 
 
 
+def ensemble_gaussian_like(y,mu,log_var):
+    y = y.expand(y.shape[0],2)
+    y_likelihoods = 1/torch.sqrt(2*math.pi*torch.exp(log_var))*torch.exp(-0.5*(y-mu)**2/torch.exp(log_var))
+    return y_likelihoods
 
-model = dgc_w_o_balancing(input_dim=784, z_dim=10, y_dim = 1, n_centroids=4, binary=True,
-        encodeLayer=[500,500,2000], decodeLayer=[2000,500,500])
-
-model.load_model("w_balancing2.pt")
-
-
-
-
-#------------------------------------------------------------------------------------------------------------
-# Draw Samples and plot 
-#------------------------------------------------------------------------------------------------------------
-mean = model.u_p.detach().numpy()
-var = model.lambda_p.detach().numpy()
+pacman_data = np.load("pacman_data.npy")
+pacman_classes = np.load("pacman_classes.npy")
+pacman_res = np.load("pacman_response_linear_exp.npy")
+miss = np.load("miss.npy")
 
 
-sample1 = np.random.multivariate_normal(mean[:,1],np.diag(var[:,1]),1)
-sample2 = np.random.multivariate_normal(mean[:,2],np.diag(var[:,2]),1)
-sample3 = np.random.multivariate_normal(mean[:,0],np.diag(var[:,0]),1)
-sample4 = np.random.multivariate_normal(mean[:,3],np.diag(var[:,3]),1)
-samples = torch.tensor(np.concatenate((sample1,sample2,sample3,sample4),axis=0)).float()
+# DGC ENTROPY
+#model = dgc_entropy(input_dim=2, z_dim=80, y_dim = 1, n_centroids=2, binary=True,
+#        encodeLayer=[64,128,256,256], decodeLayer=[256,128,64])
+#model.load_model("entropy_exp.pt")
+
+'''
+# split the dataset
+split = split_train_test(0.8,123)
+pacman_dataset = [pacman_data,classes,res]
+train_d,test_d = split(pacman_dataset)
 
 
+data = train_d[0]
+b= np.zeros(len(train_d[2]))
+b[miss]=1
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
 
-sample1 = torch.tensor( np.random.multivariate_normal(mean[:,0],np.diag(var[:,0]),10)).float()
-sample2 = torch.tensor( np.random.multivariate_normal(mean[:,1],np.diag(var[:,1]),10)).float()
-sample3 = torch.tensor( np.random.multivariate_normal(mean[:,2],np.diag(var[:,2]),10)).float()
-sample4 = torch.tensor( np.random.multivariate_normal(mean[:,3],np.diag(var[:,3]),10)).float()
-
-
-recon_x1 = torch.sigmoid(model._dec1(model.decoder1(sample1))).detach().numpy().reshape(10,28,28)
-recon_x2 = torch.sigmoid(model._dec2(model.decoder2(sample2))).detach().numpy().reshape(10,28,28)
-recon_x3 = torch.sigmoid(model._dec3(model.decoder3(sample3))).detach().numpy().reshape(10,28,28)
-recon_x4 = torch.sigmoid(model._dec4(model.decoder4(sample4))).detach().numpy().reshape(10,28,28)
-
-
-recon_x = torch.sigmoid(model._dec(model.decoder(samples))).detach().numpy().reshape(4,28,28)
-
-
-
-
-num_row = 2
-num_col = 2
-num=4
-# plot images
-fig, axes = plt.subplots(num_row, num_col, figsize=(1.5*num_col,2*num_row))
-for i in range(num):
-    ax = axes[i//num_col, i%num_col]
-    ax.axis('off')
-    ax.imshow(recon_x[i], cmap='gray')
-plt.tight_layout()
+ax.scatter(data[:,0], data[:,1], train_d[2],c=b, marker='o')
+ax.set_xlabel('Pacman X-axis')
+ax.set_ylabel('Pacman Y-axis')
+ax.set_zlabel('Generated Non-linear Response')
+ax.set_yticklabels([])
+ax.set_xticklabels([])
+#ax.view_init(0, 180)
 plt.show()
+'''
+
+
+# VAE with Gaussian mixture (VaDE)
+#model = VaDE(input_dim=2, z_dim=80, y_dim = 1, n_centroids=2, binary=True,
+#        encodeLayer=[64,128,256,256], decodeLayer=[256,128,64])
+#model.load_model("vade.pt")
+
+
+#wo_balance6
+#model = dgc_w_o_balancing(input_dim=2, z_dim=80, y_dim = 1, n_centroids=2, binary=True,
+#       encodeLayer=[64,128,256,256], decodeLayer=[256,256,128,64])
+#model.load_model("wo_balance9.pt")
+
+#wo_balance10 (linear exponential)
+#model = new_dgc_w_o_balancing(input_dim=2, z_dim=80, y_dim = 1, n_centroids=2, binary=True,
+#        encodeLayer=[64,128,256,256], decodeLayer=[256,128,64])
+#model.load_model("wo_balance10.pt")
+
+
+model = dgc_entropy(input_dim=2, z_dim=80, y_dim = 1, n_centroids=2, binary=True,
+        encodeLayer=[64,128,256,256], decodeLayer=[256,128,64])
+model.load_model("entropy.pt")
+
+
+# PCA plot
+a = np.load("pacman_data.npy")
+b = np.load("pacman_classes.npy")
+c = np.load("pacman_response_linear_exp.npy")
+from util_class import split_train_test
+split = split_train_test(0.8,123)
+train_d,test_d = split([a,b,c])
+a,b,c = test_d[0],test_d[1],test_d[2]
+a = torch.tensor(a).float()
+z, output1, output2, mu, logvar = model.forward(a)
+z = z.detach().numpy()
+z_embedded = TSNE(n_components=2).fit_transform(z)
+#pca = PCA(n_components=2)
+#pca.fit(z)
+#comp = pca.components_
+#plt.plot(comp[1,:],comp[0,:])
+#plt.show()
 
 
 
-#------------------------------------------------------------------------------------------------------------
-# Plot accuracies
-#------------------------------------------------------------------------------------------------------------
-fig, ax1 = plt.subplots()
 
-#a = np.load("wo_balancing_acc_linear_exp.npy")
-a = np.load("w_accuracy_new.npy")
-b = np.load("acc_dgc_w_o.npy")
-#e = np.load("wo_balancing_acc_linear_exp.npy")
-c = np.load("acc_vae_mix.npy")
-d = np.load("gammax_new.npy")
-ind = np.arange(len(a))
-color = 'tab:red'
-ax1.set_xlabel('Epoch')
-ax1.set_ylabel('Accuracy')
-#ax1.plot(ind, a, color="g",label="DGC w Balancing Coeff")
-ax1.plot(ind,a,color="r", label = "DGC w Balancing Coeff")
-ax1.plot(ind,b,color="m", label = "DGC w/o Balancing Coeff")
-ax1.plot(ind,c,color="k", label = "VAE with GMM")
-ax1.tick_params(axis='y')
-ax1.legend()
 
-ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+# linear case
+#model = new_dgc_w_o_balancing(input_dim=2, z_dim=80, y_dim = 1, n_centroids=2, binary=True,
+#        encodeLayer=[64,128,256,256], decodeLayer=[256,128,64])
+#model.load_model("wo_balance_linear.pt")
 
-color = 'tab:blue'
-ax2.set_ylabel('Balancing Coeff', color=color)  # we already handled the x-label with ax1
-ax2.plot(ind,d, color="b",label = "Balancing Coeff")
-ax2.tick_params(axis='y', labelcolor=color)
-ax2.set_ylim(0,1)
-fig.tight_layout()  # otherwise the right y-label is slightly clipped
+'''
+data = np.load("pacman_data.npy")
+classes = np.load("pacman_classes.npy")
+res = np.load("pacman_response_linear_exp.npy")
+from util_class import split_train_test
+split = split_train_test(0.8,123)
+train_d,test_d = split([data,classes,res])
+data,classes,res = test_d[0],test_d[1],test_d[2]
+data = torch.tensor(data).float()
+res = torch.tensor(res).float()
+res = res.reshape(len(res),1)
+
+
+h = model.encoder(data)
+mu = model._enc_mu(h)
+logvar = model._enc_log_sigma(h)
+z = model.reparameterize(mu, logvar)
+y_preds_mu = torch.sigmoid(model.out_mu(z))
+y_preds_log_var = model.out_log_sigma(z)
+# Calculate response likelihood under different clusters
+y_likelihood = torch.clamp(ensemble_gaussian_like(res,y_preds_mu,y_preds_log_var),1e-08)
+
+norm_y = y_likelihood/torch.sum(y_likelihood,1,keepdim=True)+1e-40
+gamma_x = 1-torch.sum(-norm_y*torch.log(norm_y),1)/math.log(2)
+gamma_x = -0.4 + torch.sigmoid(gamma_x)*1.7782
+gamma_x = gamma_x.reshape(len(gamma_x),1) # Nx1
+
+lambda_k = get_lambda_k(z,mu,logvar,model.u_p,model.lambda_p,model.theta_p,y_likelihood,gamma_x)
+pred = torch.max(lambda_k,1)[0].detach().numpy().astype(int)
+acc = cluster_acc(pred,classes)
+print(acc[0])
+
+'''
+
+
+'''
+z = np.load("latent_rep.npy")
+classes = np.load("ground_truth.npy")
+pred = np.load("pred.npy")
+pca = PCA(n_components=3)
+pca.fit(z)
+pca_coor = np.matmul(z,pca.components_.reshape(16,3))
+plt.scatter(pca_coor[:,0],pca_coor[:,2],c=pred)
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.title("Ground Truth Clusters")
 plt.show()
-
-
-
-
-
-index = np.arange(100)
-plt.plot(index,a[9:109],c='red',label="DGC")
-plt.plot(index,b[9:109],c='blue',label="VaDE")
-plt.xlabel("Epoch")
-plt.ylabel("Clustering Accuracy")
-plt.legend()
-plt.show()  
 
 '''
 
@@ -255,15 +228,153 @@ plt.show()
 
 
 
+#------------------------------------------------------------------------------------------------------------
+# Draw Samples and plot 
+#------------------------------------------------------------------------------------------------------------
+'''
+mean = model.u_p.detach().numpy()
+var = model.lambda_p.detach().numpy()
+
+
+sample1 = np.random.multivariate_normal(mean[:,0],np.diag(var[:,0]),4000)
+sample2 = np.random.multivariate_normal(mean[:,1],np.diag(var[:,1]),4000)
+samples = torch.tensor(np.concatenate((sample1,sample2),axis=0)).float()
+sample1 = torch.tensor(sample1).float()
+sample2 = torch.tensor(sample2).float()
+
+#gen_mean = model.out_mu(samples)
+gen_mean = torch.sigmoid(model.out_mu(samples)).detach().numpy()
+gen_var = model.out_log_sigma(samples).detach().numpy()
+res1 = []
+res2 = []
+for i in range(gen_mean.shape[0]):
+	res1.append(np.random.normal(gen_mean[i,0],np.exp(gen_var[i,0])))
+	res2.append(np.random.normal(gen_mean[i,1],np.exp(gen_var[i,1])))
+
+res1 = np.array(res1)
+res2 = np.array(res2)
+res = np.concatenate((gen_mean[0:4000,0],gen_mean[4000:8000,1]))
+
+
+ind = np.arange(4000)
+plt.plot(ind,np.sort(res[4000:8000]))
+plt.plot(ind,np.sort(res[0:4000])[::-1])
+plt.show()
+'''
+
+
+
+#res = res.reshape(res.shape[1],res.shape[0])
+
+
+
+#pcz = get_pcz(samples,model.u_p,model.lambda_p,model.theta_p)
+#res = torch.sum(pcz*res,1).detach().numpy()
+
+
+#res = np.zeros(samples.shape[0])
+#res[0:4000] = np.min(gen_mean[0:4000,:],1)
+#res[4000:len(res)] = np.max(gen_mean[4000:len(res),:],1)
+
+'''
+b = np.zeros(samples.shape[0])
+b[0:4000] = 1
+recon_x1 = torch.tanh(model._dec1(model.decoder1(sample1))).detach().numpy()
+recon_x2 = torch.tanh(model._dec2(model.decoder2(sample2))).detach().numpy()
+plt.scatter(recon_x1[:,0],recon_x1[:,1],c="yellow",alpha=0.1)
+plt.scatter(recon_x2[:,0],recon_x2[:,1],c="purple",alpha=0.1)
+plt.xlabel('Pacman X-axis')
+plt.ylabel('Pacman Y-axis')
+plt.show()
+
+
+
+ 
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+ax.scatter(recon_x1[:,0], recon_x1[:,1], res[0:4000],c="yellow"
+  , marker='o')
+ax.scatter(recon_x2[:,0], recon_x2[:,1], res[4000:8000],c="purple"
+  , marker='o')
+ax.set_xlabel('Pacman X-axis')
+ax.set_ylabel('Pacman Y-axis')
+ax.set_zlabel('Generated Non-linear Response')
+ax.set_yticklabels([])
+ax.set_xticklabels([])
+plt.show()
+'''
 
 
 
 
 
+# VaDE
+
+'''
+mean = model.u_p.detach().numpy()
+var = model.lambda_p.detach().numpy()
+
+sample1 = np.random.multivariate_normal(mean[:,0],np.diag(var[:,0]),4000)
+sample2 = np.random.multivariate_normal(mean[:,1],np.diag(var[:,1]),4000)
+samples = torch.tensor(np.concatenate((sample1,sample2),axis=0)).float()
+recon_x = torch.tanh(model._dec(model.decoder(samples))).detach().numpy()
+b = np.ones(samples.shape[0])
+b[4000:8000] = 0
+plt.scatter(recon_x[:,0],recon_x[:,1],c=b,alpha=0.05)
+#plt.scatter(pacman_data[:,0],pacman_data[:,1])
+plt.show()
+
+'''
 
 
+'''
+# Debugging DGC
+from dgc import dgc
+from vade import vade
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, binary=True,
+        encodeLayer=[128,256,256], decodeLayer=[256,256,128])
+#model = vade(input_dim=2,  z_dim=5, n_centroids=2, binary=True,
+#        encodeLayer=[32,64], decodeLayer=[64,32])
+model.load_model('dgc.pt')
+mean = model.u_p.detach().numpy()
+var = model.lambda_p.detach().numpy()
 
 
+sample1 = np.random.multivariate_normal(mean[:,0],np.diag(var[:,0]),4000)
+sample2 = np.random.multivariate_normal(mean[:,1],np.diag(var[:,1]),4000)
+samples = torch.tensor(np.concatenate((sample1,sample2),axis=0)).float()
+sample1 = torch.tensor(sample1).float()
+sample2 = torch.tensor(sample2).float()
+
+gen_mean = torch.sigmoid(model.out_mu(samples)).detach().numpy()
+gen_var = model.out_log_sigma(samples).detach().numpy()
+res1 = []
+res2 = []
+for i in range(gen_mean.shape[0]):
+    res1.append(np.random.normal(gen_mean[i,0],np.exp(gen_var[i,0])))
+    res2.append(np.random.normal(gen_mean[i,1],np.exp(gen_var[i,1])))
+
+res1 = np.array(res1)
+res2 = np.array(res2)
+res = np.concatenate((gen_mean[0:4000,0],gen_mean[4000:8000,1]))
+
+ind = np.arange(4000)
+plt.plot(ind,np.sort(res[4000:8000]))
+plt.plot(ind,np.sort(res[0:4000])[::-1])
+plt.show()
+
+# reconstruct pacman
+recon_x = torch.tanh(model._dec(model.decoder(samples))).detach().numpy()
+b = np.ones(samples.shape[0])
+b[4000:8000] = 0
+plt.scatter(recon_x[:,0],recon_x[:,1],c=b,alpha=0.05)
+#plt.scatter(pacman_data[:,0],pacman_data[:,1])
+plt.show()
+'''
 
 
 

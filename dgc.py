@@ -18,31 +18,60 @@ from torch.utils.data import TensorDataset, DataLoader, Dataset
 
 
 class dgc(nn.Module):
-    def __init__(self, input_dim=784, y_dim = 100, z_dim=10, n_centroids=10, binary=True,
-        encodeLayer=[500,500,2000], decodeLayer=[2000,500,500]):
+    def __init__(self, input_dim=784, y_dim = 100, z_dim=10, n_centroids=10, task = 'regression', binary=True,
+        multi_decoder = False, encodeLayer=[500,500,2000], decodeLayer=[2000,500,500]):
         super(self.__class__, self).__init__()
+        self.input_dim = input_dim
         self.z_dim = z_dim
         self.y_dim = y_dim
         self.n_centroids = n_centroids
+        self.multi_decoder = multi_decoder
+        self.task = task
         #self.encoder = util.bigEncNet(nChannels)
         #res18 = models.resnet18(pretrained=False)
         #self.encoder = util.res_cutlayers(res18,1)
-        self.encoder = util.buildNetwork([input_dim] + encodeLayer)
-        self.decoder = util.buildNetwork([z_dim] + decodeLayer)
+        self.encoder = util.buildNetwork([input_dim] + encodeLayer,activation="sigmoid")
+        self.decoder = util.buildNetwork([z_dim] + decodeLayer,activation='sigmoid')
         # predicting latent parameters
         self._enc_mu = nn.Linear(encodeLayer[-1], z_dim)
         self._enc_log_sigma = nn.Linear(encodeLayer[-1], z_dim)
         # last layer of the decoder
-        self._dec = nn.Linear(decodeLayer[-1], input_dim)
+        if self.multi_decoder:
+            self._dec = nn.Linear(decodeLayer[-1], input_dim*self.n_centroids)
+        else:
+            self._dec = nn.Linear(decodeLayer[-1], input_dim)
         self._dec_act = None
-        #self.predict_prob = nn.Sequential(util.buildNetwork([input_dim] + encodeLayer),nn.Linear(encodeLayer[-1], z_dim),nn.Softmax(dim=1))
-        self.predict_prob = nn.Sequential(nn.Linear(encodeLayer[-1], z_dim),nn.Softmax(dim=1))
-        self.prob_ensemble = nn.Linear(self.z_dim, self.y_dim*self.n_centroids)
-        #self.prob_ensemble = util.buildNetwork([z_dim,512,self.y_dim*self.n_centroids])
+
+
+
+        if self.task == 'regression':
+            # Do regression
+            #self.predict_prob = nn.Sequential(util.buildNetwork([input_dim] + encodeLayer),nn.Linear(encodeLayer[-1], z_dim),nn.Softmax(dim=1))
+            self.predict_prob = nn.Sequential(nn.Linear(encodeLayer[-1], self.n_centroids),nn.Softmax(dim=1))
+            #self.prob_ensemble = nn.Sequential(nn.Linear(self.z_dim, self.y_dim*self.n_centroids),nn.Sigmoid())
+            self.out_mu = nn.Sequential(
+                #nn.Linear(z_dim,128),
+                #nn.ReLU(),
+                nn.Linear(z_dim,self.y_dim*self.n_centroids),
+            #    nn.ReLU(),
+            #    nn.Linear(256,256),
+            #    nn.ReLU(),
+            #    nn.Linear(256,256),
+            #    nn.ReLU(),
+            #    nn.Linear(256,128),
+            #    nn.ReLU(),
+            #    nn.Linear(128,self.y_dim*self.n_centroids),
+                #nn.Sigmoid(),(),
+            )
+            self.out_log_sigma = nn.Linear(z_dim,self.y_dim*self.n_centroids)
+            #self.prob_ensemble = util.buildNetwork([z_dim,512,self.y_dim*self.n_centroids])
+        else:
+            # do classification
+            self.prob_ensemble = nn.Linear(self.z_dim, self.y_dim*self.n_centroids)
 
 
         if binary:
-            self._dec_act = nn.Sigmoid()
+            self._dec_act = nn.Tanh()
 
         self.u_p, self.theta_p, self.lambda_p = util.create_gmmparam(self.n_centroids, self.z_dim)
 
@@ -79,8 +108,8 @@ class dgc(nn.Module):
             self.cuda()
         data = []
         self.eval()
-        for i, (inputs,cluster_index) in enumerate(loader):
-            inputs = inputs.float()
+        for i, batch in enumerate(loader):
+            inputs = batch[0].float()
             if use_cuda:
                 inputs = inputs.cuda()
             z, outputs, mu, logvar, prob = self.forward(inputs)
@@ -161,28 +190,26 @@ class dgc(nn.Module):
             prior_mu.append(self.u_p.data.detach().cpu().numpy().transpose(1,0))
             prior_var.append(self.lambda_p.data.detach().cpu().numpy().transpose(1,0))
 
-            for i, (inputs,labels) in enumerate(trainloader):
+            for i, (inputs,y_label,cluster_index) in enumerate(trainloader):
                 b_size = inputs.shape[0]
-                y_label = labels[:,0]
                 side_info_true.append(y_label.numpy())
-                y_label = y_label.reshape(len(y_label),1).long()
-                cluster_index = labels.numpy()[:,1]
+                cluster_index = cluster_index.numpy()
+                y_label = y_label.unsqueeze(1).float()
                 inputs = inputs.float()
                 
                 if use_cuda:
                     inputs = inputs.cuda()
                     y_label = y_label.cuda()
-                    y_label_onehot = torch.zeros(b_size,self.y_dim).cuda()
 
                 optimizer.zero_grad()
 
-                y_label_onehot = y_label_onehot.scatter_(1, y_label, 1).reshape(b_size,1,self.y_dim)
                 #self.check_nan()
                 z, outputs, mu, logvar, prob = self.forward(inputs,True)
-                y_preds = torch.softmax(self.prob_ensemble(z).reshape(b_size,self.n_centroids,self.y_dim),2)
-                y_likelihood = torch.sum(y_preds*y_label_onehot,2)
-                #entropy_regu = util.entropy_loss(y_likelihood/torch.sum(y_likelihood,dim=1,keepdim=True),axis=1)
-                
+                y_preds_mu = torch.sigmoid(self.out_mu(z))
+                y_preds_log_var = self.out_log_sigma(z)
+                # Calculate response likelihood under different clusters
+                log_y_likelihood = util.ensemble_gaussian_loglike(y_label,y_preds_mu,y_preds_log_var,self.n_centroids)
+
 
                 temp_label.append(cluster_index)
                 temp_latent.append(z.detach().cpu().numpy())
@@ -196,9 +223,13 @@ class dgc(nn.Module):
                 else:
                     #lambda_k = util.dgc_get_lambda_k(z, mu, logvar, y_preds,
                     #    self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
-                    lambda_k = util.dgc_get_lambda_k(z, y_likelihood, self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
+                    lambda_k = util.dgc_get_lambda_k(z, log_y_likelihood, self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
 
-                loss = util.dgc_loss_function(outputs, inputs, z, mu, logvar, y_likelihood,
+                if self.multi_decoder:
+                    outputs = outputs.reshape(outputs.shape[0],self.n_centroids,self.input_dim)
+                    outputs = torch.sum(outputs*lambda_k.unsqueeze(-1),1)
+
+                loss = util.dgc_loss_function(outputs, inputs, z, mu, logvar, log_y_likelihood,
                     lambda_k, self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
                 #loss += torch.mean(entropy_regu)
                 #loss,bce,logpzc,qentropy,logpc,logqcx = util.vade_loss_function(outputs, inputs, z, mu, logvar, 
@@ -213,7 +244,7 @@ class dgc(nn.Module):
 
                 lambda_k = lambda_k.data.cpu().numpy()
                 posterior_prob.append(lambda_k)
-                side_info_pred.append(y_preds.detach().cpu().numpy())
+                side_info_pred.append(y_preds_mu.detach().cpu().numpy())
                 cluster_train.append(np.argmax(lambda_k[:len(cluster_index)], axis=1))
                 cluster_truth.append(cluster_index.astype(np.int))
 
@@ -240,47 +271,55 @@ class dgc(nn.Module):
             #print(debug_tools.check_clus_consistency(cluster_train,cluster_truth,summary=True,approx_true_error=True))
             #print(debug_tools.check_confidence(posterior_prob,cluster_train,cluster_truth))
             print(acc[0])
-            print(util.pred_acc(side_info_pred,posterior_prob,side_info_true,'max'))
+            #print(util.pred_acc(side_info_pred,posterior_prob,side_info_true,'multi_binary_classification','max'))
             # validate
             self.eval()
             valid_loss = 0.0
             cluster_test = []
             cluster_truth = []
-            for i, (inputs,labels) in enumerate(validloader):
+            for i, (inputs,test_y_label,cluster_index) in enumerate(validloader):
                 b_size = inputs.shape[0]
-                cluster_index = labels.numpy()[:,1]
                 inputs = inputs.float() 
+                cluster_index = cluster_index.numpy()
+                side_info_true_test.append(test_y_label.numpy())
+                #test_y_label = test_y_label.unsqueeze(1).float()
                 if use_cuda:
                     inputs = inputs.cuda()
                     if extractor:
                         extractor = extractor.cuda()
-                    y_label_onehot = torch.zeros(b_size,self.y_dim).cuda()
                 if extractor:
                     with torch.no_grad():
-                        y_label = torch.argmax(extractor(inputs),1).long()
-                        y_label = y_label.reshape(len(y_label),1)
-                    y_true_label = labels[:,0]
+                        y_label = extractor(inputs)
+                        y_label = y_label.unsqueeze(1)
+                        if use_cuda:
+                            y_label = y_label.cuda()
+                    y_true_label = test_y_label.numpy()
                 else:
+                    y_label = test_y_label.unsqueeze(1).float()
                     if use_cuda:
-                        y_label = labels[:,0].long()
-                        y_label = y_label.reshape(len(y_label),1).cuda()
+                        y_label = y_label.cuda()
 
 
-                y_label_onehot = y_label_onehot.scatter_(1, y_label, 1).reshape(b_size,1,self.y_dim)
                 #self.check_nan()
-                z, outputs, mu, logvar, prob = self.forward(inputs,False)
-                y_preds = torch.softmax(self.prob_ensemble(z).reshape(b_size,self.n_centroids,self.y_dim),2)
-                y_likelihood = torch.sum(y_preds*y_label_onehot,2)
-                #entropy_regu = util.entropy_loss(y_likelihood/torch.sum(y_likelihood,dim=1,keepdim=True),axis=1)
+                z, outputs, mu, logvar, prob = self.forward(inputs,True)
+                y_preds_mu = torch.sigmoid(self.out_mu(z))
+                y_preds_log_var = self.out_log_sigma(z)
+                # Calculate response likelihood under different clusters
+                log_y_likelihood = util.ensemble_gaussian_loglike(y_label,y_preds_mu,y_preds_log_var,self.n_centroids)
+
 
                 if direct_predict_prob:
                     lambda_k = prob
                 else:
                     #lambda_k = util.dgc_get_lambda_k(z, mu, logvar, y_preds,
                     #    self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
-                    lambda_k = util.dgc_get_lambda_k(z, y_likelihood, self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
+                    lambda_k = util.dgc_get_lambda_k(z, log_y_likelihood, self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
 
-                loss = util.dgc_loss_function(outputs, inputs, z, mu, logvar, y_likelihood,
+                if self.multi_decoder:
+                    outputs = outputs.reshape(outputs.shape[0],self.n_centroids,self.input_dim)
+                    outputs = torch.sum(outputs*lambda_k.unsqueeze(-1),1)
+
+                loss = util.dgc_loss_function(outputs, inputs, z, mu, logvar, log_y_likelihood,
                     lambda_k, self.u_p, self.lambda_p, self.theta_p, self.n_centroids)
                 #loss += torch.mean(entropy_regu)
                 #loss,bce,logpzc,qentropy,logpc,logqcx = util.vade_loss_function(outputs, inputs, z, mu, logvar, 
@@ -292,10 +331,9 @@ class dgc(nn.Module):
                 cluster_test.append(np.argmax(lambda_k, axis=1))
                 cluster_truth.append(cluster_index.astype(np.int))
                 posterior_prob_test.append(lambda_k)
-                side_info_pred_test.append(y_preds.detach().cpu().numpy())
+                side_info_pred_test.append(y_preds_mu.detach().cpu().numpy())
                 if extractor:
                     side_info_true_test.append(y_true_label.numpy())
-
 
             cluster_test = np.concatenate(cluster_test)
             cluster_truth = np.concatenate(cluster_truth)
@@ -306,7 +344,7 @@ class dgc(nn.Module):
             #    print(np.sum(cluster_test==cluster_test_prev)/len(cluster_test))
             cluster_test_prev = cluster_test
             acc = util.cluster_acc(cluster_test,cluster_truth)
-            print(util.pred_acc(side_info_pred_test,posterior_prob_test,side_info_true_test,'max'))
+            #print(util.pred_acc(side_info_pred_test,posterior_prob_test,side_info_true_test,'multi_binary_classification','max'))
             print("#Epoch %3d: lr: %.5f, Train Loss: %.5f, Valid Loss: %.5f, Cluster ACC:%.5f" % (
                 epoch, epoch_lr, train_loss / len(trainloader), valid_loss / len(validloader), acc[0]))
         overall_label = np.array(overall_label)

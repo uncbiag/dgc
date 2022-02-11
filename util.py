@@ -162,6 +162,8 @@ def buildNetwork(layers, activation="relu", dropout=0):
             net.append(nn.ReLU())
         elif activation=="sigmoid":
             net.append(nn.Sigmoid())
+        elif activation=="tanh":
+            net.append(nn.Tanh())
         if dropout > 0:
             net.append(nn.Dropout(dropout))
     return nn.Sequential(*net)
@@ -211,6 +213,49 @@ def buildNetwork(layers, activation="relu", dropout=0):
 
 
 
+def load_sample_datasets(dataset = 'pacman'):
+    if dataset == 'pacman':
+        pacman_data = np.load("pacman_data.npy")
+        classes = np.load("pacman_classes.npy")
+        res = np.load("pacman_response_linear_exp.npy")
+
+
+        # split the dataset
+        split = split_train_test(0.8,123)
+        pacman_dataset = [pacman_data,classes,res]
+        train_d,test_d = split(pacman_dataset)
+
+        train_f = torch.tensor(train_d[0]).float()
+        test_f = torch.tensor(test_d[0]).float()
+        train_l = torch.tensor(train_d[1].astype(int))
+        test_l = torch.tensor(test_d[1].astype(int))
+        train_y = torch.tensor(train_d[2]).float()
+        test_y = torch.tensor(test_d[2]).float()
+        init_f = torch.cat([train_f,test_f])
+        init_l = torch.cat([train_l,test_l])
+        init_y = torch.cat([train_y,test_y])
+
+
+        trainloader = DataLoader(TensorDataset(train_f,train_y,train_l),batch_size=args.batch_size,shuffle=True)
+        testloader = DataLoader(TensorDataset(test_f,test_y, test_l),batch_size=args.batch_size,shuffle=True)
+        initloader = DataLoader(TensorDataset(init_f,init_y,init_l),batch_size=args.batch_size,shuffle=True)
+
+
+    elif dataset == 'cifar100':
+        train_f = torch.tensor(np.load("train_f_resnet50.npy"))
+        test_f = torch.tensor(np.load("test_f_resnet50.npy"))
+        train_l = torch.tensor(np.load("train_l_resnet50.npy"))
+        test_l = torch.tensor(np.load("test_l_resnet50.npy"))
+        init_f = torch.cat([train_f,test_f])
+        init_l = torch.cat([train_l,test_l])
+        trainloader = DataLoader(TensorDataset(train_f,train_l),batch_size=args.batch_size,shuffle=True)
+        testloader = DataLoader(TensorDataset(test_f,test_l),batch_size=args.batch_size,shuffle=True)
+        initloader = DataLoader(TensorDataset(init_f,init_l),batch_size=args.batch_size,shuffle=True)
+
+
+    return trainloader,testloader,initloader
+
+
 def vade_get_lambda_k(z, u_p, lambda_p, theta_p, n_centroids):
     Z = z.unsqueeze(2).expand(z.size()[0], z.size()[1], n_centroids) # NxDxK
     u_tensor3 = u_p.unsqueeze(0).expand(z.size()[0], u_p.size()[0], u_p.size()[1]) # NxDxK
@@ -240,6 +285,7 @@ def vade_get_lambda_k(z, u_p, lambda_p, theta_p, n_centroids):
 
 
 def dgc_get_lambda_k(z, side_info, u_p, lambda_p, theta_p, n_centroids):
+    #lambda_p = lambda_p.data.clamp_(1e-2)
     Z = z.unsqueeze(2).expand(z.size()[0], z.size()[1], n_centroids) # NxDxK
     u_tensor3 = u_p.unsqueeze(0).expand(z.size()[0], u_p.size()[0], u_p.size()[1]) # NxDxK
     lambda_tensor3 = lambda_p.unsqueeze(0).expand(z.size()[0], lambda_p.size()[0], lambda_p.size()[1])
@@ -252,18 +298,20 @@ def dgc_get_lambda_k(z, side_info, u_p, lambda_p, theta_p, n_centroids):
     #    (Z-u_tensor3)**2/(2*lambda_tensor3), dim=1)
     #p_c_z = torch.softmax(p_c_z,1)
     '''
-    #p_c_z = torch.log(theta_tensor2) - torch.sum(0.5*torch.log(2*math.pi*lambda_tensor3)+\
-    #    (Z-u_tensor3)**2/(lambda_tensor3), dim=1)# NxK
-    p_c_z = torch.exp(torch.log(theta_tensor2) - torch.sum(0.5*torch.log(2*math.pi*lambda_tensor3)+\
-        (Z-u_tensor3)**2/(2*lambda_tensor3), dim=1)) + 1e-8 # NxK
+    p_c_z = torch.log(theta_tensor2) - torch.sum(0.5*torch.log(2*math.pi*lambda_tensor3)+\
+        (Z-u_tensor3)**2/(lambda_tensor3), dim=1)# NxK
+    #p_c_z = torch.exp(torch.log(theta_tensor2) - torch.sum(0.5*torch.log(2*math.pi*lambda_tensor3)+\
+    #    (Z-u_tensor3)**2/(2*lambda_tensor3), dim=1)) + 1e-8 # NxK
 
-    p_c_z = p_c_z / torch.sum(p_c_z, dim=1, keepdim=True)
+    #p_c_z = p_c_z / torch.sum(p_c_z, dim=1, keepdim=True)
 
-    lambda_k = side_info*p_c_z / torch.sum(side_info*p_c_z, dim=1, keepdim=True)
+    #lambda_k = side_info*p_c_z / (torch.sum(side_info*p_c_z, dim=1, keepdim=True)+1e-8)
     #lambda_k = torch.softmax((side_info+neg_entropy)*p_c_z,1)
+    lambda_k = torch.softmax(side_info+p_c_z,1)
     #if torch.sum(torch.isnan(lambda_k))!=0:
     #    import pdb; pdb.set_trace()
-
+    if torch.sum(torch.isnan(lambda_k)):
+        import pdb; pdb.set_trace()
     return lambda_k 
     #return torch.softmax(side_info+neg_entropy,1) + 1e-8
     #return torch.softmax(p_c_z,1)
@@ -281,7 +329,7 @@ def vade_loss_function(recon_x, x, z, z_mean, z_log_var, lambda_k, u_p, lambda_p
 #------------------------------------------------------------------------------------------------------------------------
     # Calculate loss
     mse_loss = nn.MSELoss(reduction='sum')
-    MSE= mse_loss(recon_x,x)/x.size(0)
+    MSE= mse_loss(recon_x,x)
     logpzc = likelihoods.get_logpzc(z_mean_t,z_log_var_t,lambda_k,u_tensor3, lambda_tensor3)
     qentropy = likelihoods.get_qentropy(z_log_var)
     logpc = likelihoods.get_logpc(lambda_k,theta_tensor2)
@@ -314,9 +362,10 @@ def dgc_loss_function(recon_x, x, z, z_mean, z_log_var, side_info, lambda_k, u_p
 #------------------------------------------------------------------------------------------------------------------------
     # Calculate loss
     #side_info_loss = likelihoods.contrastive_side_info_loss(side_info,mask)/x.size(0)
-    side_info_loss = -torch.sum(torch.log(side_info)*lambda_k,1)
+    side_info_loss = -torch.sum(side_info*lambda_k,1)
     mse_loss = nn.MSELoss(reduction='sum')
-    MSE= mse_loss(recon_x,x)/x.size(0)
+    MSE= mse_loss(recon_x,x)
+    #MSE = torch.sum((recon_x-x)**2,1)
     logpzc = likelihoods.get_logpzc(z_mean_t,z_log_var_t,lambda_k,u_tensor3, lambda_tensor3)
     qentropy = likelihoods.get_qentropy(z_log_var)
     logpc = likelihoods.get_logpc(lambda_k,theta_tensor2)
@@ -331,7 +380,7 @@ def dgc_loss_function(recon_x, x, z, z_mean, z_log_var, side_info, lambda_k, u_p
         print(torch.mean(logqcx))
         print("------------------------------------------------------------------------------------------------------")
 
-    loss = torch.mean(side_info_loss + MSE + logpzc + qentropy + logpc + logqcx)
+    loss = torch.mean(side_info_loss + MSE + (logpzc + qentropy + logpc + logqcx))
     #loss = torch.mean(y_entropy_regu)
     if torch.isnan(loss):
         import pdb; pdb.set_trace()
@@ -360,8 +409,8 @@ def vae_loss_function(recon_x, x, z_mean, z_log_var, sigma=0, bce=True, print_lo
 
     loss = torch.mean(recon_loss + KLD )
     #loss = torch.mean(y_entropy_regu)
-    if torch.isnan(loss):
-        import pdb; pdb.set_trace()
+    #if torch.isnan(loss):
+    #    import pdb; pdb.set_trace()
     return loss, float(torch.mean(recon_loss).detach().cpu().numpy()),float(torch.mean(KLD).detach().cpu().numpy())
 
 
@@ -420,15 +469,27 @@ def cluster_acc(Y_pred, Y):
 
 
 
-def pred_acc(pred,prob,label,mode = 'max'):
-    if mode=='max':
-        index = np.argmax(prob,1)
-        class_pred = np.argmax(pred[np.arange(len(index)),index,:],1)
-        pred_acc = np.sum(class_pred==label)/len(label)
-    else:
-        class_pred = np.argmax(np.sum(prob.reshape(prob.shape[0],prob.shape[1],1)*pred,1),1)
-        pred_acc = np.sum(class_pred==label)/len(label)
-
+def pred_acc(pred,prob,label,problem='classification',mode = 'max'):
+    if problem=="classification":
+        if mode=='max':
+            index = np.argmax(prob,1)
+            class_pred = np.argmax(pred[np.arange(len(index)),index,:],1)
+            pred_acc = np.sum(class_pred==label)/len(label)
+        else:
+            class_pred = np.argmax(np.sum(prob.reshape(prob.shape[0],prob.shape[1],1)*pred,1),1)
+            pred_acc = np.sum(class_pred==label)/len(label)
+    elif problem=="multi_binary_classification":
+        if mode=='max':
+            index = np.argmax(prob,1)
+            class_pred = pred[np.arange(len(index)),index,:]
+            class_pred[class_pred>=0.5]=1
+            class_pred[class_pred<0.5]=0
+            pred_acc = np.mean(np.mean(class_pred==label,1))
+        else:
+            class_pred = np.sum(prob.reshape(prob.shape[0],prob.shape[1],1)*pred,1)
+            class_pred[class_pred>=0.5]=1
+            class_pred[class_pred<0.5]=0
+            pred_acc = np.mean(np.mean(class_pred==label,1))
     return pred_acc
 
 
@@ -561,13 +622,32 @@ def gen_features(dataset,num_clusters,pretrained_choice = 'resnet50',combined=Fa
         train_x = transform(train_x)
         test_x = transform(test_x)
 
+        trainloader = DataLoader(TensorDataset(train_x),batch_size=128,shuffle=False)
+        testloader = DataLoader(TensorDataset(test_x),batch_size=128,shuffle=False)
+        with torch.no_grad():
+            train_feature = derive_feature(trainloader,pretrained_net,pretrained_choice,False)
+            test_feature = derive_feature(testloader,pretrained_net,pretrained_choice,False)
+        train_label = np.concatenate([train_y,train_c],axis=1)
+        test_label = np.concatenate([test_y,test_c],axis=1)
+    elif dataset=='generic':
+        # load data
+        train_x = torch.from_numpy(np.load("train_im.npy")).float()
+        train_y = np.load("train_res.npy")
+        train_c = np.load("train_cluster_index.npy").astype(int)
+        test_x = torch.from_numpy(np.load("test_im.npy")).float()
+        test_y = np.load("test_res.npy")
+        test_c = np.load("test_cluster_index.npy").astype(int)
+        transform=torchvision.transforms.Compose([
+                                               normalize
+                                             ])
+        train_x = transform(train_x)
+        test_x = transform(test_x)
         trainloader = DataLoader(TensorDataset(train_x),batch_size=16,shuffle=False)
         testloader = DataLoader(TensorDataset(test_x),batch_size=16,shuffle=False)
         train_feature = derive_feature(trainloader,pretrained_net,pretrained_choice,False)
         test_feature = derive_feature(testloader,pretrained_net,pretrained_choice,False)
-        train_label = np.concatenate([train_y,train_c],axis=1)
-        test_label = np.concatenate([test_y,test_c],axis=1)
-
+        train_label = train_c
+        test_label = test_c
 
     if combined:
         total_feature,total_label = np.concatenate([train_feature,test_feature]),np.concatenate([train_label,test_label])
@@ -602,6 +682,16 @@ def entropy_loss(prob,axis=0):
 
 
 
+def ensemble_gaussian_like(y,mu,log_var,n_centroids):
+    y = y.expand(y.shape[0],n_centroids)
+    y_likelihoods = 1/torch.sqrt(2*math.pi*torch.exp(log_var))*torch.exp(-0.5*(y-mu)**2/torch.exp(log_var))
+    return y_likelihoods
+
+
+def ensemble_gaussian_loglike(y,mu,log_var,n_centroids):
+    y = y.expand(y.shape[0],n_centroids)
+    log_y_likelihoods = -0.5*(math.log(2*math.pi) + log_var) - 0.5*(y-mu)**2/torch.exp(log_var)
+    return log_y_likelihoods
 
 
 def check(a,b,index):
@@ -612,19 +702,17 @@ def check(a,b,index):
     return 0
 
 
+
 # A linear evaluation layer
 class linear_eval(nn.Module):
-    def __init__(self,f_dim,num_class,problem='linear'):
+    def __init__(self,f_dim,num_class,problem='image'):
         super(linear_eval, self).__init__()
         self.f_dim = f_dim
         self.num_class = num_class
         #self.linear_eval = nn.Sequential(nn.Linear(f_dim,512),nn.ReLU(),nn.Linear(512,100),nn.Softmax(dim=1))
-
-        if problem=='linear':
-            #self.linear_eval = nn.Sequential(nn.Linear(f_dim,num_class),nn.Softmax(dim=1))
-            self.linear_eval = nn.Sequential(nn.Linear(f_dim,num_class))
+        if problem=='image':
+            self.linear_eval = nn.Sequential(nn.Linear(f_dim,num_class),nn.Softmax(dim=1))
         else:
-            #self.linear_eval = nn.Sequential(buildNetwork([f_dim] + problem),nn.Linear(problem[-1],num_class),nn.Softmax(dim=1))
             self.linear_eval = nn.Sequential(buildNetwork([f_dim] + problem),nn.Linear(problem[-1],num_class))
 
     def forward(self,x):
@@ -634,7 +722,7 @@ class linear_eval(nn.Module):
 
 # A neural network training/evaluating function
 def trainer(model,data, b_size, optimizer,loss_fn, num_epochs,scheduler=None):
-    train_x,train_y,test_x,test_y = torch.tensor(data[0][0]),torch.tensor(data[0][1]).long(),torch.tensor(data[1][0]),torch.tensor(data[1][1]).long()
+    train_x,train_y,test_x,test_y = torch.tensor(data[0][0]).float(),torch.tensor(data[0][1]).float(),torch.tensor(data[1][0]).float(),torch.tensor(data[1][1]).float()
     trainloader = DataLoader(TensorDataset(train_x,train_y),batch_size=b_size,shuffle=True)
     testloader = DataLoader(TensorDataset(test_x,test_y),batch_size=b_size,shuffle=False)
     use_cuda = torch.cuda.is_available()
@@ -679,6 +767,7 @@ def trainer(model,data, b_size, optimizer,loss_fn, num_epochs,scheduler=None):
 
 # Example
 '''
+# An example for image data
 import numpy as np
 import util
 import torch.nn as nn
@@ -690,11 +779,34 @@ test_x = np.load("test_f_resnet50.npy")
 test_y = np.load("test_l_resnet50.npy")[:,0]
 data = [[train_x,train_y],[test_x,test_y]]
 loss_fn = nn.CrossEntropyLoss()
-model = util.linear_eval(train_x.shape[1],100,problem=[512])
+model = util.linear_eval(train_x.shape[1],100,problem='image')
 optimizer = optim.Adam(model.parameters(), lr=0.0001) 
 #scheduler = scheduler_choice.StepLR(optimizer, step_size=40, gamma=0.1)
-model = util.trainer(model,data,128,optimizer,loss_fn,3000)
+model = util.trainer(model,data,128,optimizer,loss_fn,4000)
+
+
+# An example for pacman data
+import numpy as np
+import util
+import torch.nn as nn
+import torch.optim as optim
+import torch.optim.lr_scheduler as scheduler_choice
+x = np.load("pacman_data.npy")
+y = np.load("pacman_response_linear_exp.npy")
+y = y.reshape(len(y),1)
+np.random.seed(123)
+index = np.arange(x.shape[0])
+np.random.shuffle(index)
+train_point = int(len(index)*0.8)
+data = [[x[index[:train_point],:],y[index[:train_point]]],[x[index[train_point:],:],y[index[train_point:]]]]
+loss_fn = nn.MSELoss(reduction='mean')
+model = util.linear_eval(2,1,problem=[20])
+optimizer = optim.Adam(model.parameters(), lr=0.0001) 
+#scheduler = scheduler_choice.StepLR(optimizer, step_size=40, gamma=0.1)
+model = util.trainer(model,data,512,optimizer,loss_fn,200)
 '''
+
+
 
 
 #------------------------------------------------------------------------------------------------------------------
