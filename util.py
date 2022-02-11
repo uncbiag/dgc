@@ -215,9 +215,9 @@ def buildNetwork(layers, activation="relu", dropout=0):
 
 def load_sample_datasets(dataset = 'pacman'):
     if dataset == 'pacman':
-        pacman_data = np.load("pacman_data.npy")
-        classes = np.load("pacman_classes.npy")
-        res = np.load("pacman_response_linear_exp.npy")
+        pacman_data = np.load("./pacman/pacman_data.npy")
+        classes = np.load("./pacman/pacman_classes.npy")
+        res = np.load("./pacman/pacman_response_linear_exp.npy")
 
 
         # split the dataset
