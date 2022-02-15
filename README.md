@@ -18,10 +18,14 @@ For the variational lower bound of DGC, please refer to Eq. 2 in the main paper.
 
 
 ## Test the model on Pacman
-To run the model on the Pacman dataset, simply do
+To run the model on the Pacman dataset, first install the package 
+```console
+pip install dgc
+```
+After the installation, simply follow the following
 ```python
 # Test model on the sythetic dataset Pacman
-from util import load_sample_datasets
+from dgc import load_sample_datasets
 from dgc import dgc
 
 dataset = 'pacman'
