@@ -42,7 +42,7 @@ if dataset == 'pacman':
     model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, binary=True,
                 encodeLayer=[128,256,256], decodeLayer=[256,256,128])
 elif dataset == 'cifar100':
-    task_name = 'cifar100'
+    task_name = 'classification'
     torch.manual_seed(157)
     np.random.seed(157)
     model = dgc(input_dim=2048, y_dim = 100, z_dim=10, n_centroids=20, task = task_name, binary=False,

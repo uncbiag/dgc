@@ -269,6 +269,31 @@ def load_sample_datasets(batch_size,dataset = 'pacman'):
     return trainloader,testloader,initloader
 
 
+
+def form_dataloaders(batch_size,train_d,test_d):
+
+    # first index: features
+    # second index: side-information 
+    # third index: cluster indices
+    train_f = torch.tensor(train_d[0]).float()
+    test_f = torch.tensor(test_d[0]).float()
+    train_y = torch.tensor(train_d[1]).float()
+    test_y = torch.tensor(test_d[1]).float()
+    train_l = torch.tensor(train_d[2].astype(int))
+    test_l = torch.tensor(test_d[2].astype(int))
+    init_f = torch.cat([train_f,test_f])
+    init_l = torch.cat([train_l,test_l])
+    init_y = torch.cat([train_y,test_y])
+
+    trainloader = DataLoader(TensorDataset(train_f,train_y,train_l),batch_size=batch_size,shuffle=True)
+    testloader = DataLoader(TensorDataset(test_f,test_y, test_l),batch_size=batch_size,shuffle=True)
+    initloader = DataLoader(TensorDataset(init_f,init_y,init_l),batch_size=batch_size,shuffle=True)
+
+
+    return trainloader,testloader,initloader
+
+
+
 def vade_get_lambda_k(z, u_p, lambda_p, theta_p, n_centroids):
     Z = z.unsqueeze(2).expand(z.size()[0], z.size()[1], n_centroids) # NxDxK
     u_tensor3 = u_p.unsqueeze(0).expand(z.size()[0], u_p.size()[0], u_p.size()[1]) # NxDxK
