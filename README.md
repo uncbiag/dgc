@@ -53,7 +53,7 @@ To run DGC on your own dataset, you will need to have the following files (all o
 You can create your own dataloader or passing the files into the built-in loader function
 ```python
 from dgc import form_dataloaders
-
+from dgc import dgc
 
 batch_size = 128  # whatever you want
 task_name = 'regression' # or classification
