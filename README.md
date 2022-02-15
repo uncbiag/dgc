@@ -42,8 +42,10 @@ model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs
 ```
 
 ## Test the model on your dataset
-To run DGC on your own dataset, you will need to have the following files
-1. First item
-2. Second item
-3. Third item
-4. Fourth item
+To run DGC on your own dataset, you will need to have the following files (all of which are assumed to be numpy arrays)
+1. **train_features.npy**: this contains the training features
+2. **train_side_info.npy**: this contains the training side-information (can be either discrete or continous)
+3. **train_cluster_labels.npy**: this contains the training clustering labels
+4. **test_features.npy**: this contains the test features
+5. **test_side_info.npy**: this contains the test side-information (can be either discrete or continous)
+6. **test_cluster_labels.npy**: this contains the test clustering labels
