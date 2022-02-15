@@ -43,3 +43,7 @@ model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs
 
 ## Test the model on your dataset
 To run DGC on your own dataset, you will need to have the following files
+1. First item
+2. Second item
+3. Third item
+4. Fourth item
