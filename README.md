@@ -34,5 +34,5 @@ trainloader, testloader, _ = load_sample_datasets(batch_size,dataset)
 model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, binary=True,
             encodeLayer=[128,256,256], decodeLayer=[256,256,128])
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs
-        anneal=True,direct_predict_prob=False)
+        anneal=True, direct_predict_prob=False)
 ```
