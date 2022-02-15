@@ -71,6 +71,7 @@ learning_rate = 0.01
 num_epochs = 10
 anneal = True
 direct_predict_prob = False
+save_model_path = './sample_model.pt'
 
 
 train_data = [train_features,train_side_info,train_cluster_labels] # order matters here
@@ -81,4 +82,7 @@ model = dgc(input_dim=input_dim,  y_dim = y_dim, z_dim=z_dim, n_centroids=n_cent
             encodeLayer=encoder_size, decodeLayer=decoder_size)
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs
         anneal=anneal, direct_predict_prob=direct_predict_prob)
+        
+# If you want to save the model
+model.save_model(save_model_path)
 ```
