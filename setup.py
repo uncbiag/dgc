@@ -7,7 +7,7 @@ setup(
     author='Yifeng Shi',
     author_email='yifengs@cs.unc.edu',
     # Needed to actually package something
-    packages=['measure'],
+    packages=['dgc'],
     # Needed for dependencies
     install_requires=['numpy','pytorch'],
     # *strongly* suggested for sharing
