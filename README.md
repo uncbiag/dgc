@@ -17,8 +17,22 @@ In words, we first sample a component index from p(c), sample the latent code z 
 For the variational lower bound of DGC, please refer to Eq. 2 in the main paper. In a nutshell, we want to maximize the log-likelihood by maximizing its variational lower bound. 
 
 
-## Running the model
-To run the model, simply do
+## Test the model on Pacman
+To run the model on the Pacman dataset, simply do
 ```python
-python run_model.py
+# Test model on the sythetic dataset Pacman
+from util import load_sample_datasets
+from dgc import dgc
+
+dataset = 'pacman'
+side_task_name = 'regression'
+batch_size = 128
+learning_rate = 0.01
+epochs = 50
+
+trainloader, testloader, _ = load_sample_datasets(batch_size,dataset)
+model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, binary=True,
+            encodeLayer=[128,256,256], decodeLayer=[256,256,128])
+model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs
+        anneal=True,direct_predict_prob=False)
 ```
