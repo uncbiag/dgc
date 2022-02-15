@@ -19,7 +19,7 @@ For the variational lower bound of DGC, please refer to Eq. 2 in the main paper.
 
 ## Test the model on Pacman
 To run the model on the Pacman dataset, first install the package 
-```console
+```shell
 pip install dgc
 ```
 After the installation, simply follow the following
@@ -40,3 +40,6 @@ model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, 
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs
         anneal=True, direct_predict_prob=False)
 ```
+
+## Test the model on your dataset
+To run DGC on your own dataset, you will need to have the following files
