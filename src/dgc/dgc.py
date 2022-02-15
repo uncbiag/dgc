@@ -11,9 +11,9 @@ from torchvision import datasets, models, transforms
 import numpy as np
 import math
 from sklearn.mixture import GaussianMixture
-import util
-import likelihoods
-import debug_tools
+import dgc.util as util
+import dgc.likelihoods as likelihoods
+import dgc.debug_tools as tools
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 
 

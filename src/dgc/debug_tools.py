@@ -14,7 +14,7 @@ import math
 from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-import likelihoods
+import dgc.likelihoods as dgc
 
 
 

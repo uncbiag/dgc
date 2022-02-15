@@ -35,7 +35,7 @@ from sklearn.manifold import TSNE
 
 import matplotlib.pyplot as plt
 import scipy.io as scio
-import likelihoods
+import dgc.likelihoods as likelihoods
 
 
 
