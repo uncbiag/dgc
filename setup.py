@@ -1,13 +1,18 @@
-from setuptools import setup
+import setuptools
 
-setup(
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+setuptools.setup(
     # Needed to silence warnings (and to be a worthwhile package)
     name='dgc',
     url='https://github.com/uncbiag/dgc',
     author='Yifeng Shi',
     author_email='yifengs@cs.unc.edu',
     # Needed to actually package something
-    packages=['dgc'],
+    package_dir={"": "src"},
+    packages=setuptools.find_packages(where="src"),
+    python_requires=">=3.7",
     # Needed for dependencies
     install_requires=['numpy','torch','matplotlib'],
     # *strongly* suggested for sharing
@@ -16,5 +21,6 @@ setup(
     license='UNC',
     description='An accompanying package for the paper, Deep Goal-Oriented Clustering',
     # We will also need a readme eventually (there will be a warning)
-    long_description=open('README.txt').read(),
+    long_description=long_description,
+    long_description_content_type="text/markdown",
 )
