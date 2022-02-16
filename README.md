@@ -47,7 +47,7 @@ from dgc import sample_model
 import matplotlib.pyplot as plt
 
 task_name = 'regression'
-num_simu_points = 1000 #number of simulated/sampled points PER CLUSTER
+num_simu_points = 1000 # number of simulated/sampled points PER CLUSTER
 
 # Use the trained model from the Pacman example
 latent_sample, input_sample, side_info_sample = sample_model(model,num_simu_points,task_name)
