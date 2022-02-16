@@ -17,12 +17,14 @@ In words, we first sample a component index from p(c), sample the latent code z 
 For the variational lower bound of DGC, please refer to Eq. 2 in the main paper. In a nutshell, we want to maximize the log-likelihood by maximizing its variational lower bound. 
 
 
-## Test the model on Pacman
-To run the model on the Pacman dataset, first install the package 
+## Install DGC
+To install DGC, simply run
 ```shell
 pip install dgc
 ```
-After the installation, simply follow the following
+
+## Test the model on Pacman
+Simply follow the following to train a DGC model on Pacman
 ```python
 # Test model on the sythetic dataset Pacman
 from dgc import load_sample_datasets
@@ -33,8 +35,9 @@ task_name = 'regression'
 batch_size = 128
 learning_rate = 0.01
 epochs = 50
+path = './pacman'
 
-trainloader, testloader, _ = load_sample_datasets(batch_size,dataset)
+trainloader, testloader, _ = load_sample_datasets(batch_size, path, dataset)
 model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, binary=True,
             encodeLayer=[128,256,256], decodeLayer=[256,256,128])
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs,
