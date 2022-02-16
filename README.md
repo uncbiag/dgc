@@ -40,6 +40,36 @@ model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, 
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs,
         anneal=True, direct_predict_prob=False)
 ```
+After training the model, one might want to visualize what one can sample from the learned model, for both gaining insight and a sanity check. If so, one can use the built-in function to sample from the model and plot the samples
+```python
+# Test model on the sythetic dataset Pacman
+from dgc import sample_model
+import matplotlib.pyplot as plt
+
+task_name = 'regression'
+num_simu_points = 1000 #number of simulated/sampled points PER CLUSTER
+
+# Use the trained model from the Pacman example
+latent_sample, input_sample, side_info_sample = sample_model(model,num_simu_points,task_name)
+input_sample1 = input_sample[:num_simu_points,:]
+input_sample2 = input_sample[num_simu_points:,:]
+ 
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+ax.scatter(input_sample1[:,0], input_sample1[:,1], np.squeeze(side_info_sample[0],-1) ,c="yellow"
+  , marker='o')
+ax.scatter(input_sample2[:,0], input_sample2[:,1], np.squeeze(side_info_sample[1],-1) ,c="purple"
+  , marker='o')
+ax.set_xlabel('Pacman X-axis')
+ax.set_ylabel('Pacman Y-axis')
+ax.set_zlabel('Generated Non-linear Response')
+ax.set_yticklabels([])
+ax.set_xticklabels([])
+plt.show()
+```
+
+
 
 ## Test the model on your dataset
 To run DGC on your own dataset, you will need to have the following files (all of which are assumed to be numpy arrays)
