@@ -194,21 +194,35 @@ class dgc(nn.Module):
                 b_size = inputs.shape[0]
                 side_info_true.append(y_label.numpy())
                 cluster_index = cluster_index.numpy()
-                y_label = y_label.unsqueeze(1).float()
+                if self.task == 'regression':
+                    y_label = y_label.unsqueeze(1).float()
+                else:
+                    y_label = y_label.unsqueeze(1).long()
                 inputs = inputs.float()
                 
                 if use_cuda:
                     inputs = inputs.cuda()
                     y_label = y_label.cuda()
+                    if  self.task == 'classification':
+                        y_label_onehot = torch.zeros(b_size,self.y_dim).cuda()
 
                 optimizer.zero_grad()
 
-                #self.check_nan()
-                z, outputs, mu, logvar, prob = self.forward(inputs,True)
-                y_preds_mu = torch.sigmoid(self.out_mu(z))
-                y_preds_log_var = self.out_log_sigma(z)
-                # Calculate response likelihood under different clusters
-                log_y_likelihood = util.ensemble_gaussian_loglike(y_label,y_preds_mu,y_preds_log_var,self.n_centroids)
+
+                if self.task == 'regression':
+                    #self.check_nan()
+                    z, outputs, mu, logvar, prob = self.forward(inputs,True)
+                    y_preds_mu = torch.sigmoid(self.out_mu(z))
+                    y_preds_log_var = self.out_log_sigma(z)
+                    # Calculate response likelihood under different clusters
+                    log_y_likelihood = util.ensemble_gaussian_loglike(y_label,y_preds_mu,y_preds_log_var,self.n_centroids)
+                else:
+                    y_label_onehot = y_label_onehot.scatter_(1, y_label, 1).reshape(b_size,1,self.y_dim)
+                    #self.check_nan()
+                    z, outputs, mu, logvar, prob = self.forward(inputs,True)
+                    y_preds = torch.softmax(self.prob_ensemble(z).reshape(b_size,self.n_centroids,self.y_dim),2)
+                    log_y_likelihood = torch.log(torch.sum(y_preds*y_label_onehot,2)+1e-8)
+                    #entropy_regu = util.entropy_loss(y_likelihood/torch.sum(y_likelihood,dim=1,keepdim=True),axis=1)                    
 
 
                 temp_label.append(cluster_index)
@@ -287,25 +301,47 @@ class dgc(nn.Module):
                     inputs = inputs.cuda()
                     if extractor:
                         extractor = extractor.cuda()
+                    if self.task == 'classification':
+                        y_label_onehot = torch.zeros(b_size,self.y_dim).cuda()
                 if extractor:
-                    with torch.no_grad():
-                        y_label = extractor(inputs)
-                        y_label = y_label.unsqueeze(1)
+                    if self.task=='regression':
+                        with torch.no_grad():
+                            y_label = extractor(inputs)
+                            y_label = y_label.unsqueeze(1)
+                            if use_cuda:
+                                y_label = y_label.cuda()
+                        y_true_label = test_y_label.numpy()
+                    else:
+                        with torch.no_grad():
+                            y_label = torch.argmax(extractor(inputs),1).long()
+                            y_label = y_label.unsqueeze(1)
+                            if use_cuda:
+                                y_label = y_label.cuda()
+                        y_true_label = test_y_label
+                else:
+                    if self.task=='regression':
+                        y_label = test_y_label.unsqueeze(1).float()
                         if use_cuda:
                             y_label = y_label.cuda()
-                    y_true_label = test_y_label.numpy()
+                    else:
+                        y_label = test_y_label.unsqueeze(1).long()
+                        if use_cuda:
+                            y_label = y_label.cuda()                        
+
+                if self.task == 'regression':
+                    #self.check_nan()
+                    z, outputs, mu, logvar, prob = self.forward(inputs,True)
+                    y_preds_mu = torch.sigmoid(self.out_mu(z))
+                    y_preds_log_var = self.out_log_sigma(z)
+                    # Calculate response likelihood under different clusters
+                    log_y_likelihood = util.ensemble_gaussian_loglike(y_label,y_preds_mu,y_preds_log_var,self.n_centroids)
                 else:
-                    y_label = test_y_label.unsqueeze(1).float()
-                    if use_cuda:
-                        y_label = y_label.cuda()
-
-
-                #self.check_nan()
-                z, outputs, mu, logvar, prob = self.forward(inputs,True)
-                y_preds_mu = torch.sigmoid(self.out_mu(z))
-                y_preds_log_var = self.out_log_sigma(z)
-                # Calculate response likelihood under different clusters
-                log_y_likelihood = util.ensemble_gaussian_loglike(y_label,y_preds_mu,y_preds_log_var,self.n_centroids)
+                    y_label_onehot = y_label_onehot.scatter_(1, y_label, 1).reshape(b_size,1,self.y_dim)
+                    #self.check_nan()
+                    z, outputs, mu, logvar, prob = self.forward(inputs,False)
+                    y_preds = torch.softmax(self.prob_ensemble(z).reshape(b_size,self.n_centroids,self.y_dim),2)
+                    log_y_likelihood = torch.log(torch.sum(y_preds*y_label_onehot,2)+1e-8)
+                    #entropy_regu = util.entropy_loss(y_likelihood/torch.sum(y_likelihood,dim=1,keepdim=True),axis=1)
 
 
                 if direct_predict_prob:

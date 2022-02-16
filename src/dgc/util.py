@@ -226,11 +226,11 @@ class split_train_test(object):
         return train_dataset, test_dataset
 
 
-def load_sample_datasets(batch_size,dataset = 'pacman'):
+def load_sample_datasets(batch_size, path, dataset = 'pacman'):
     if dataset == 'pacman':
-        pacman_data = np.load("./pacman/pacman_data.npy")
-        classes = np.load("./pacman/pacman_classes.npy")
-        res = np.load("./pacman/pacman_response_linear_exp.npy")
+        pacman_data = np.load(path+"/pacman_data.npy")
+        classes = np.load(path+"/pacman_classes.npy")
+        res = np.load(path+"/pacman_response_linear_exp.npy")
 
 
         # split the dataset
@@ -255,10 +255,10 @@ def load_sample_datasets(batch_size,dataset = 'pacman'):
 
 
     elif dataset == 'cifar100':
-        train_f = torch.tensor(np.load("train_f_resnet50.npy"))
-        test_f = torch.tensor(np.load("test_f_resnet50.npy"))
-        train_l = torch.tensor(np.load("train_l_resnet50.npy"))
-        test_l = torch.tensor(np.load("test_l_resnet50.npy"))
+        train_f = torch.tensor(np.load(path+"/train_f_resnet50.npy"))
+        test_f = torch.tensor(np.load(path+"/test_f_resnet50.npy"))
+        train_l = torch.tensor(np.load(path+"/train_l_resnet50.npy"))
+        test_l = torch.tensor(np.load(path+"/test_l_resnet50.npy"))
         init_f = torch.cat([train_f,test_f])
         init_l = torch.cat([train_l,test_l])
         trainloader = DataLoader(TensorDataset(train_f,train_l),batch_size=batch_size,shuffle=True)
@@ -801,6 +801,41 @@ def trainer(model,data, b_size, optimizer,loss_fn, num_epochs,scheduler=None):
         print("#Epoch %3d:,Train Loss: %.5f, Valid Loss: %.5f, Train ACC:%.5f, Test ACC:%.5f" % (
             epoch, train_loss / len(trainloader), test_loss / len(testloader), train_acc, test_acc))
     return model
+
+
+# A simple function for sampling from the learned model
+def sample_model(model,num_simulation_points,task_name):
+    reconstruction = []
+    side_info = []
+    latent_code = []
+
+    mean = model.u_p.detach().numpy()
+    var = model.lambda_p.detach().numpy()
+
+    num_clusters = mean.shape[1]
+
+    for i in range(num_clusters):
+        latent_i = np.random.multivariate_normal(mean[:,i],np.diag(var[:,i]),num_simulation_points)
+        latent_code.append(latent_i)
+    latent_code = torch.tensor(np.concatenate(latent_code,axis=0)).float()
+    if task_name == 'regression':
+        gen_mean = torch.sigmoid(model.out_mu(latent_code))
+        gen_var = model.out_log_sigma(latent_code)
+        for i in range(num_clusters):
+            side_info.append(gen_mean[i*num_simulation_points:(i+1)*num_simulation_points,i])
+        side_info = torch.stack(side_info).unsqueeze(-1)
+    else:
+        gen_probs = torch.softmax(model.prob_ensemble(latent_code).reshape(latent_code.shape[0],model.n_centroids,model.y_dim),2)
+        for i in range(num_clusters):
+            side_info.append(gen_probs[i*num_simulation_points:(i+1)*num_simulation_points,i,:])
+        side_info = torch.stack(side_info)
+    x_samples = model._dec(model.decoder(latent_code))
+    if model._dec_act is not None:
+        x_samples = model._dec_act(x_samples)
+    x_samples = x_samples.detach().numpy()
+    latent_code = latent_code.detach().numpy()
+    side_info = side_info.detach().numpy()
+    return latent_code,x_samples,side_info
 
 
 # Example
