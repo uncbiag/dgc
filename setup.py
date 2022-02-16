@@ -9,9 +9,9 @@ setup(
     # Needed to actually package something
     packages=['dgc'],
     # Needed for dependencies
-    install_requires=['numpy','pytorch'],
+    install_requires=['numpy','torch','matplotlib'],
     # *strongly* suggested for sharing
-    version='0.1',
+    version='0.1.3',
     # The license can be anything you like
     license='UNC',
     description='An accompanying package for the paper, Deep Goal-Oriented Clustering',
