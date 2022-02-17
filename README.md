@@ -43,7 +43,7 @@ model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, 
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs,
         anneal=True, direct_predict_prob=False)
 ```
-After training the model, one might want to visualize what one can sample from the learned model, for both gaining insight and a sanity check. If so, one can use the built-in function to sample from the model and plot the samples
+After training the model, one might want to visualize what one can sample from the learned model, for both gaining insight and as a sanity check. If so, one can use the built-in function to sample from the model and plot the samples
 ```python
 # Test model on the sythetic dataset Pacman
 from dgc import sample_model
