@@ -1,8 +1,8 @@
 # Deep Goal-Oriented Clustering
 
-This is the depository for the paper, Deep Goal-Oriented Clustering (DGC). This page documents the ```shell python```. Here we give a brief description of DGC.
+This is the depository for the paper, Deep Goal-Oriented Clustering (DGC). This page documents the python library ```dgc```, including instructions to re-create one of the experiments in the paper and instructions on how to apply DGC to a customized ddataset. Here we give a brief description of DGC.
 
-DGC is built upon VAE, and uses similar variational techniques to maximize a variation lower bound of the data log-likelihood. A (deep) variational method can be efficiently summarized in terms of its generative & infernece steps, which we describe next. 
+DGC is built upon VAE, and uses similar variational techniques to maximize the variation lower bound of the data log-likelihood. A (deep) variational method can be efficiently summarized in terms of its generative & infernece processes, which we describe next. 
 
 ## Generative process for DGC
 Let x,y,z and c denote the input data, the side-information, the latent code, and the index for a given Gaussian mixture component, we then have
