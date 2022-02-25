@@ -27,9 +27,9 @@ pip install dgc
 ```
 
 ## Test the model on Pacman
-Simply follow the following to train a DGC model on Pacman
+Simply follow the following to train a DGC model on the Pacman dataset. Please refer to Sec.5.2 in the main paper for more details. 
 ```python
-# Test model on the sythetic dataset Pacman
+# Load functions from dgc
 from dgc import load_sample_datasets
 from dgc import dgc
 
@@ -46,9 +46,9 @@ model = dgc(input_dim=2,  y_dim = 1, z_dim=10, n_centroids=2, task = task_name, 
 model.fit(trainloader, testloader, lr=learning_rate, num_epochs=epochs,
         anneal=True, direct_predict_prob=False)
 ```
-After training the model, one might want to visualize what one can sample from the learned model, for both gaining insight and as a sanity check. If so, one can use the built-in function to sample from the model and plot the samples. As an example, assume we just ran the code above and trained the model. Now we wnat to visualize the Pacman samples learned from the model
+After training the model, one might want to visualize samples from the learned model, for both gaining insight and as a sanity check that our model is learning the correct data strcuture. If so, one can use the built-in function to sample from the model and plot the samples. As an example, assume we just trained a DGC model on the pacman (by running the code above), and now we want to visualize the samples from the learned model
 ```python
-# Test model on the sythetic dataset Pacman
+# Load the sampling function
 from dgc import sample_model
 import matplotlib.pyplot as plt
 
@@ -74,7 +74,7 @@ ax.set_yticklabels([])
 ax.set_xticklabels([])
 plt.show()
 ```
-
+This will replicate Fig.3b in the main paper.
 
 
 ## Test the model on your dataset
@@ -86,7 +86,7 @@ To run DGC on your own dataset, you will need to have the following files (all o
 5. **test_side_info.npy**: this contains the test side-information (can be either discrete or continous)
 6. **test_cluster_labels.npy**: this contains the test clustering labels
 
-You can create your own dataloader or passing the files into the built-in loader function
+You can create your own dataloader or passing the files into the built-in loader function. We use the built-in loader function for convenience here
 ```python
 from dgc import form_dataloaders
 from dgc import dgc
