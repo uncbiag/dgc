@@ -86,6 +86,12 @@ To run DGC on your own dataset, you will need to have the following files (all o
 5. **test_side_info.npy**: this contains the test side-information (can be either discrete or continous)
 6. **test_cluster_labels.npy**: this contains the test clustering labels
 
+As noted in the manuscript, when having access to the side-information at test time, ```test_side_info.npy``` is simply the ground truth side-information. However, when not having access to the side-information at test time, ```test_side_info.npy``` should contain something like
+```python
+# test_features are the input features (i.e. x) at test time
+test_side_info = side_info_prediction_net(test_features)
+```
+
 You can create your own dataloader or passing the files into the built-in loader function. We use the built-in loader function for convenience here
 ```python
 from dgc import form_dataloaders
